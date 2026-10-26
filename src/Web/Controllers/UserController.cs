@@ -57,49 +57,81 @@ public class UserController : ControllerBase
         return Ok();
     }
 
+    //private async Task<UserInfo> CreateUserInfo(ClaimsPrincipal claimsPrincipal)
+    //{
+    //    if (claimsPrincipal.Identity == null || claimsPrincipal.Identity.Name == null || !claimsPrincipal.Identity.IsAuthenticated)
+    //    {
+    //        return UserInfo.Anonymous;
+    //    }
+
+    //    var userInfo = new UserInfo
+    //    {
+    //        IsAuthenticated = true
+    //    };
+
+    //    if (claimsPrincipal.Identity is ClaimsIdentity claimsIdentity)
+    //    {
+    //        userInfo.NameClaimType = claimsIdentity.NameClaimType;
+    //        userInfo.RoleClaimType = claimsIdentity.RoleClaimType;
+    //    }
+    //    else
+    //    {
+    //        userInfo.NameClaimType = "name";
+    //        userInfo.RoleClaimType = "role";
+    //    }
+
+    //    if (claimsPrincipal.Claims.Any())
+    //    {
+    //        var claims = new List<ClaimValue>();
+    //        var nameClaims = claimsPrincipal.FindAll(userInfo.NameClaimType);
+    //        foreach (var claim in nameClaims)
+    //        {
+    //            claims.Add(new ClaimValue(userInfo.NameClaimType, claim.Value));
+    //        }
+
+    //        foreach (var claim in claimsPrincipal.Claims.Except(nameClaims))
+    //        {
+    //            claims.Add(new ClaimValue(claim.Type, claim.Value));
+    //        }
+
+    //        userInfo.Claims = claims;
+    //    }
+
+    //    var token = await _tokenClaimsService.GetTokenAsync(claimsPrincipal.Identity.Name);
+    //    userInfo.Token = token;
+
+    //    return userInfo;
+    //}
     private async Task<UserInfo> CreateUserInfo(ClaimsPrincipal claimsPrincipal)
     {
-        if (claimsPrincipal.Identity == null || claimsPrincipal.Identity.Name == null || !claimsPrincipal.Identity.IsAuthenticated)
+        // ১. Guard Clause: Pattern matching দিয়ে Null ও Authentication চেক
+        if (claimsPrincipal?.Identity is not { IsAuthenticated: true, Name: string username })
         {
             return UserInfo.Anonymous;
         }
 
-        var userInfo = new UserInfo
+        // ২. Null coalescing operator (??) দিয়ে Claim Types নির্ধারণ
+        var identity = claimsPrincipal.Identity as ClaimsIdentity;
+        string nameClaimType = identity?.NameClaimType ?? "name";
+        string roleClaimType = identity?.RoleClaimType ?? "role";
+
+        // ৩. LINQ Select দিয়ে দুটি লুপ ও Except বাদ দিয়ে সহজে Claims প্রোজেকশন
+        var claims = claimsPrincipal.Claims
+            .OrderByDescending(c => c.Type == nameClaimType) // Name Claim-গুলোকে প্রথমে রাখার জন্য
+            .Select(c => new ClaimValue(c.Type, c.Value))
+            .ToList();
+
+        // ৪. Token জেনারেট করা
+        var token = await _tokenClaimsService.GetTokenAsync(username);
+
+        // ৫. Object Initializer দিয়ে রিটার্ন
+        return new UserInfo
         {
-            IsAuthenticated = true
+            IsAuthenticated = true,
+            NameClaimType = nameClaimType,
+            RoleClaimType = roleClaimType,
+            Claims = claims,
+            Token = token
         };
-
-        if (claimsPrincipal.Identity is ClaimsIdentity claimsIdentity)
-        {
-            userInfo.NameClaimType = claimsIdentity.NameClaimType;
-            userInfo.RoleClaimType = claimsIdentity.RoleClaimType;
-        }
-        else
-        {
-            userInfo.NameClaimType = "name";
-            userInfo.RoleClaimType = "role";
-        }
-
-        if (claimsPrincipal.Claims.Any())
-        {
-            var claims = new List<ClaimValue>();
-            var nameClaims = claimsPrincipal.FindAll(userInfo.NameClaimType);
-            foreach (var claim in nameClaims)
-            {
-                claims.Add(new ClaimValue(userInfo.NameClaimType, claim.Value));
-            }
-
-            foreach (var claim in claimsPrincipal.Claims.Except(nameClaims))
-            {
-                claims.Add(new ClaimValue(claim.Type, claim.Value));
-            }
-
-            userInfo.Claims = claims;
-        }
-
-        var token = await _tokenClaimsService.GetTokenAsync(claimsPrincipal.Identity.Name);
-        userInfo.Token = token;
-
-        return userInfo;
     }
 }
